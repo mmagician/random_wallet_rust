@@ -12,6 +12,7 @@ use serde_json::{Value, Map};
 
 
 const DK_LEN: usize = 32;
+const ETH_ADDRESS_LEN: usize = 20;
 
 #[derive(Serialize, Debug)]
 struct KeyStore<'a> {
@@ -29,22 +30,19 @@ fn serialize(store: &KeyStore ) {
 
 
 fn kdf (salt: &String, passphrase: &String, params: &ScryptParams, output: &mut [u8]){
-    // let log_n:u8 = 18;
-    // output will be 32 unsigned integers
-    // let mut output: [u8; 32] = [0u8; 32];
     scrypt(passphrase.as_bytes(), salt.as_bytes(), &params, output);
 }
+
 
 fn main() {
     let uuid:String = Uuid::new_v4().to_hyphenated().to_string();
 
     // Private key is 256 bits = 32 bytes
-    let private_key:[u8; 32] = rand::thread_rng().gen::<[u8; 32]>();
-    // let private_key:Vec<u8> = (0..64).map(|_| { rand::random::<u8>() }).collect();
+    let private_key:[u8; DK_LEN] = rand::thread_rng().gen::<[u8; DK_LEN]>();
     println!("Private key: {}", hex::encode(&private_key));
 
     let passphrase:String = String::from("very secure");
-    // Salt is 32 bytes long?
+    // Salt can be up to 32 bytes long
     let salt:String = String::from("my salt");
 
     let mut full_key = [0x00; DK_LEN];
@@ -57,16 +55,18 @@ fn main() {
 
     kdf(&salt, &passphrase, &kdf_params, &mut full_key);
     // Only the first part: 128 bits are used for AES.
-    let encryption_key = &full_key[..16];
+    let encryption_key = &full_key[..DK_LEN/2];
     // The second part of the derived key is used for validation
-    let validation_key = &full_key[16..];
+    let validation_key = &full_key[DK_LEN/2..];
     println!("The encryption key: {}", hex::encode(encryption_key));
     println!("The validation key: {}", hex::encode(validation_key));
 
     // Run AES
+
+    // We need an initialization vector, any #bytes will do (up to 32?)
     let iv:[u8; 8] = [0x00; 8];
     let mut aes_128 = ctr(KeySize::KeySize128, encryption_key, &iv);
-    let mut ciphertext:[u8; 32] = [0u8; 32];
+    let mut ciphertext:[u8; DK_LEN] = [0u8; DK_LEN];
     aes_128.process(&private_key, &mut ciphertext);
     println!("Ciphertext is: {}", hex::encode(&ciphertext));
 
@@ -83,17 +83,18 @@ fn main() {
     // The calculated public key has a leading 0x04 byte
     // (a prefix meaning that the Eliptic Curve public key is uncompressed,
     // according to a common standard SEC1). We only use the actual key w/o prefix
-    let public_key: &[u8] = &public_key_full.serialize()[..32];
+    let public_key: &[u8] = &public_key_full.serialize()[..DK_LEN];
 
     println!("Public key is: {}", hex::encode(public_key));
 
     let mut hasher = Keccak256::new();
     hasher.input(public_key);
     let result = hasher.result();
-    let eth_address: &[u8] = &result[0..20];
+    let eth_address: &[u8] = &result[0..ETH_ADDRESS_LEN];
     println!("Ethereum address is: {}", hex::encode(&eth_address));
 
-    // let store = KeyStore{ version: 1, id: uuid, address: eth_address };
+    // Finally, let's go about creating the JSON.
+    // TODO this could use a clean up
     let mut crypto = Map::new();
     crypto.insert("cipher".to_string(), Value::String("aes-128-ctr".to_string()));
     crypto.insert("ciphertext".to_string(), Value::String( hex::encode(&ciphertext)));
@@ -114,12 +115,10 @@ fn main() {
     crypto.insert("kdf_params".to_string(), Value::Object(kdf_params_map));
 
     let store = KeyStore{
-        version: 1,
+        version: 3,
         id: &uuid,
         address: &hex::encode(eth_address),
         crypto: &crypto,
-
-
     };
     serialize(&store);
 }
