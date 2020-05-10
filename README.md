@@ -11,7 +11,7 @@ See [Mastering Ethereum](https://github.com/ethereumbook/ethereumbook/blob/devel
 
 ### Warning
 
-This code is not safe to use for generating your wallets. Please use for testing purposes only
+This code is not safe to use for generating your wallets. Please use for testing purposes only.
 
-
-See also the Python samples: https://github.com/mmagician/mastering_ethereum_python
+### See also
+My Python examples with (almost) the same functionality: https://github.com/mmagician/mastering_ethereum_python
